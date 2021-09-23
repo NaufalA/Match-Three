@@ -5,6 +5,18 @@ using UnityEngine;
 
 public class TileController : MonoBehaviour
 {
+    private static readonly Color SelectedColor = new Color(0.5f, 0.5f, 0.5f);
+    private static readonly Color NormalColor = Color.white;
+    private static readonly float MoveDuration = 0.5f;
+
+    private static readonly Vector2[] AdjacentDirection = 
+        new Vector2[] {Vector2.up, Vector2.down, Vector2.left, Vector2.right};
+
+    private static TileController previousSelected = null;
+
+    private bool _isSelected = false;
+    public bool IsDestroyed { get; set; }
+    
     public int id;
 
     private BoardManager _board;
@@ -14,6 +26,189 @@ public class TileController : MonoBehaviour
     {
         _board = BoardManager.Instance;
         _render = GetComponent<SpriteRenderer>();
+    }
+
+    private void OnMouseUp()
+    {
+        if (_render.sprite == null || _board.IsAnimating)
+        {
+            return;
+        }
+
+        if (_isSelected)
+        {
+            Deselect();
+        }
+        else
+        {
+            if (previousSelected == null)
+            {
+                Select();
+            }
+            else
+            {
+                if (GetAllNeighborTiles().Contains(previousSelected))
+                {
+                    TileController otherTile = previousSelected;
+                    SwapTile(otherTile, 
+                        () =>
+                        {
+                            if (_board.GetAllMatches().Count > 0)
+                            {
+                                Debug.Log("Match Found");
+                                previousSelected.Deselect();
+                            }
+                            else
+                            {
+                                SwapTile(otherTile);
+                            }
+                        });
+                }
+                else
+                {
+                    previousSelected.Deselect();
+                    Select();
+                }
+                
+            }
+        }
+    }
+
+    #region Select Deselect
+    
+    private void Select()
+    {
+        _isSelected = true;
+        _render.color = SelectedColor;
+        previousSelected = this;
+    }
+
+    private void Deselect()
+    {
+        _isSelected = false;
+        _render.color = NormalColor;
+        previousSelected = null;
+    }
+    
+    #endregion
+
+    #region Neighbor Check
+
+    private TileController GetNeighborTile(Vector2 castDir)
+    {
+        RaycastHit2D hit = Physics2D.Raycast(transform.position, castDir, _render.size.x);
+
+        if (hit)
+        {
+            return hit.collider.GetComponent<TileController>();
+        }
+
+        return null;
+    }
+
+    public List<TileController> GetAllNeighborTiles()
+    {
+        List<TileController> neighborTiles = new List<TileController>();
+
+        foreach (var direction in AdjacentDirection)
+        {
+            neighborTiles.Add(GetNeighborTile(direction));
+        }
+
+        return neighborTiles;
+    }
+
+    #endregion
+
+    #region Match Check
+
+    private List<TileController> GetMatch(Vector2 castDir)
+    {
+        List<TileController> matchingTiles = new List<TileController>();
+        RaycastHit2D hit = Physics2D.Raycast(transform.position, castDir, _render.size.x);
+
+        while (hit)
+        {
+            TileController otherTile = hit.collider.GetComponent<TileController>();
+            if (otherTile.id != id || otherTile.IsDestroyed == true)
+            {
+                break;
+            }
+            
+            matchingTiles.Add(otherTile);
+            hit = Physics2D.Raycast(otherTile.transform.position, castDir, _render.size.x);
+        }
+
+        return matchingTiles;
+    }
+
+    private List<TileController> GetOneLineMatch(Vector2[] paths)
+    {
+        List<TileController> matchingTiles = new List<TileController>();
+
+        for (int i = 0; i < paths.Length; i++)
+        {
+            matchingTiles.AddRange(GetMatch(paths[i]));
+        }
+
+        if (matchingTiles.Count >= 2)
+        {
+            return matchingTiles;
+        }
+
+        return null;
+    }
+
+    public List<TileController> GetAllMatch()
+    {
+        if (IsDestroyed)
+        {
+            return null;
+        }
+        
+        List<TileController> matchingTiles = new List<TileController>();
+
+        List<TileController> horizontalMatchingTiles = GetOneLineMatch(new Vector2[2] {Vector2.up, Vector2.down});
+        List<TileController> verticalMatchingTiles = GetOneLineMatch(new Vector2[2] {Vector2.left, Vector2.right});
+
+        if (horizontalMatchingTiles != null)
+        {
+            matchingTiles.AddRange(horizontalMatchingTiles);
+        }
+
+        if (verticalMatchingTiles != null)
+        {
+            matchingTiles.AddRange(verticalMatchingTiles);
+        }
+
+        return matchingTiles;
+    }
+
+    #endregion
+
+    public void SwapTile(TileController otherTile, System.Action onCompleted = null)
+    {
+        StartCoroutine(_board.SwapTilePosition(this, otherTile, onCompleted));
+    }
+
+    public IEnumerator MoveTilePosition(Vector2 targetPos, System.Action onCompleted)
+    {
+        Vector2 startPos = transform.position;
+        float time = 0.0f;
+
+        yield return new WaitForEndOfFrame();
+
+        while (time < MoveDuration)
+        {
+            transform.position = Vector2.Lerp(startPos, targetPos, time / MoveDuration);
+            time += Time.deltaTime;
+
+            yield return new WaitForEndOfFrame();
+        }
+
+        transform.position = targetPos;
+        
+        onCompleted?.Invoke();
     }
 
     public void ChangeId(int newId, int x, int y)

@@ -42,6 +42,16 @@ public class BoardManager : MonoBehaviour
     private Vector2 _startPosition;
     private Vector2 _endPosition;
     private TileController[,] _tiles;
+    
+    public bool IsSwapping { get; set; }
+
+    public bool IsAnimating
+    {
+        get
+        {
+            return IsSwapping;
+        }
+    }
 
     private void Start()
     {
@@ -97,4 +107,95 @@ public class BoardManager : MonoBehaviour
 
         return possibleId;
     }
+
+    #region Tile Swapping
+
+    public IEnumerator SwapTilePosition(TileController tileA, TileController tileB, System.Action onCompleted)
+    {
+        IsSwapping = true;
+
+        Vector2Int indexA = GetTileIndex(tileA);
+        Vector2Int indexB = GetTileIndex(tileB);
+
+        _tiles[indexA.x, indexA.y] = tileB;
+        _tiles[indexB.x, indexB.y] = tileA;
+        
+        tileA.ChangeId(tileA.id, indexB.x, indexB.y);
+        tileB.ChangeId(tileB.id, indexA.x, indexA.y);
+
+        bool isRoutineACompleted = false;
+        bool isRoutineBCompleted = false;
+
+        StartCoroutine(
+            tileA.MoveTilePosition(GetIndexPosition(indexB),
+                () => { isRoutineACompleted = true; }
+            ));
+        StartCoroutine(
+            tileB.MoveTilePosition(GetIndexPosition(indexA),
+                () => { isRoutineBCompleted = true; }
+            ));
+        
+        yield return new WaitUntil(() => isRoutineACompleted && isRoutineBCompleted);
+        
+        onCompleted?.Invoke();
+
+        IsSwapping = false;
+    }
+
+    public Vector2Int GetTileIndex(TileController tile)
+    {
+        for (int x = 0; x < size.x; x++)
+        {
+            for (int y = 0; y < size.y; y++)
+            {
+                if (tile == _tiles[x, y]) return new Vector2Int(x, y);
+                {
+                    
+                }
+            }
+        }
+
+        return new Vector2Int(-1, -1);
+    }
+
+    public Vector2 GetIndexPosition(Vector2Int index)
+    {
+        Vector2 tileSize = tilePrefab.GetComponent<SpriteRenderer>().size;
+        
+        return new Vector2(
+            _startPosition.x + (tileSize.x + offsetTile.x) * index.x, 
+            _startPosition.y + (tileSize.y + offsetTile.y) * index.y
+            );
+    }
+
+    #endregion
+
+    public List<TileController> GetAllMatches()
+    {
+        List<TileController> matchingTiles = new List<TileController>();
+        
+        for (int x = 0; x < size.x; x++)
+        {
+            for (int y = 0; y < size.y; y++)
+            {
+                List<TileController> tileMatched = _tiles[x, y].GetAllMatch();
+
+                if (tileMatched == null || tileMatched.Count == 0)
+                {
+                    continue;
+                }
+
+                foreach (TileController item in tileMatched)
+                {
+                    if (!matchingTiles.Contains(item))
+                    {
+                        matchingTiles.Add(item);
+                    }
+                }
+            }
+        }
+
+        return matchingTiles;
+    }
+
 }
