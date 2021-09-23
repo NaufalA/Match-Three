@@ -44,12 +44,13 @@ public class BoardManager : MonoBehaviour
     private TileController[,] _tiles;
     
     public bool IsSwapping { get; set; }
+    public bool IsProcessing { get; set; }
 
     public bool IsAnimating
     {
         get
         {
-            return IsSwapping;
+            return IsSwapping || IsProcessing;
         }
     }
 
@@ -198,4 +199,219 @@ public class BoardManager : MonoBehaviour
         return matchingTiles;
     }
 
+    #region Match Processing
+
+    public void Process()
+    {
+        Debug.Log("Start Process");
+        IsProcessing = true;
+        ProcessMatches();
+    }
+
+    public void ProcessMatches()
+    {
+        Debug.Log("Start Process: Match");
+        List<TileController> matchingTiles = GetAllMatches();
+
+        if (matchingTiles == null || matchingTiles.Count == 0)
+        {
+            IsProcessing = false;
+            return;
+        }
+
+        StartCoroutine(ClearMatches(matchingTiles, ProcessDrop));
+    }
+
+    private IEnumerator ClearMatches(List<TileController> matchingTiles, System.Action onCompleted)
+    {
+        List<bool> isCompleted = new List<bool>();
+
+        for (int i = 0; i < matchingTiles.Count; i++)
+        {
+            isCompleted.Add(false);
+        }
+        
+        for (int i = 0; i < matchingTiles.Count; i++)
+        {
+            int index = i;
+            StartCoroutine(matchingTiles[i].SetDestroyed(
+                    () => { isCompleted[index] = true; }));
+        }
+
+        yield return new WaitUntil((() => IsAllTrue(isCompleted)));
+        
+        onCompleted?.Invoke();
+    }
+    
+    #endregion
+
+    #region Match Drop
+
+    private void ProcessDrop()
+    {
+        Debug.Log("Start Drop");
+        Dictionary<TileController, int> droppingTiles = GetAllDrop();
+
+        StartCoroutine(DropTiles(droppingTiles, ProcessDestroyAndFill));
+    }
+
+    private Dictionary<TileController, int> GetAllDrop()
+    {
+        Debug.Log("Start Drop : Get All");
+        Dictionary<TileController, int> droppingTiles = new Dictionary<TileController, int>();
+
+        for (int x = 0; x < size.x; x++)
+        {
+            for (int y = 0; y < size.y; y++)
+            {
+                if (_tiles[x,y].IsDestroyed)
+                {
+                    for (int i = y+1; i < size.y; i++)
+                    {
+                        if (_tiles[x,i].IsDestroyed)
+                        {
+                            continue;
+                        }
+                        
+                        if (droppingTiles.ContainsKey(_tiles[x,i]))
+                        {
+                            droppingTiles[_tiles[x, i]]++;
+                        }
+                        else
+                        {
+                            droppingTiles.Add(_tiles[x,i], 1);
+                        }
+                    }
+                }
+            }
+        }
+        return droppingTiles;
+    }
+
+    private IEnumerator DropTiles(Dictionary<TileController, int> droppingTiles, System.Action onCompleted)
+    {
+        foreach (var pair in droppingTiles)
+        {
+            Vector2Int tileIndex = GetTileIndex(pair.Key);
+
+            TileController temp = pair.Key;
+            _tiles[tileIndex.x, tileIndex.y] = _tiles[tileIndex.x, tileIndex.y - pair.Value];
+            _tiles[tileIndex.x, tileIndex.y - pair.Value] = temp;
+            
+            temp.ChangeId(temp.id, tileIndex.x, tileIndex.y - pair.Value);
+        }
+
+        yield return null;
+        
+        onCompleted?.Invoke();
+    }
+
+    #endregion
+
+    #region Destroy and Fill
+
+    private void ProcessDestroyAndFill()
+    {
+        Debug.Log("Start Destroy n Fill");
+        List<TileController> destroyedTiles = GetAllDestroyed();
+        StartCoroutine(DestroyAndFillTiles(destroyedTiles, ProcessReposition));
+    }
+
+    private List<TileController> GetAllDestroyed()
+    {
+        List<TileController> destroyedTiles = new List<TileController>();
+
+        for (int x = 0; x < size.x; x++)
+        {
+            for (int y = 0; y < size.y; y++)
+            {
+                if (_tiles[x, y].IsDestroyed)
+                {
+                    destroyedTiles.Add(_tiles[x,y]);
+                }
+            }
+        }
+
+        return destroyedTiles;
+    }
+
+    private IEnumerator DestroyAndFillTiles(List<TileController> destroyedTiles, System.Action onCompleted)
+    {
+        List<int> highestIndex = new List<int>();
+
+        for (int i = 0; i < size.x; i++)
+        {
+            highestIndex.Add(size.y - 1);
+        }
+
+        float sSpawnHeight = _endPosition.y + tilePrefab.GetComponent<SpriteRenderer>().size.y + offsetTile.y;
+
+        foreach (var tile in destroyedTiles)
+        {
+            Vector2Int tileIndex = GetTileIndex(tile);
+            Vector2Int targetIndex = new Vector2Int(tileIndex.x, highestIndex[tileIndex.x]);
+
+            highestIndex[tileIndex.x]--;
+
+            var transform1 = tile.transform;
+            transform1.position = new Vector2(transform1.position.x, sSpawnHeight);
+            tile.GenerateRandomTile(targetIndex.x, targetIndex.y);
+        }
+
+        yield return null;
+        
+        onCompleted?.Invoke();
+    }
+
+    #endregion
+
+    #region Reposition
+
+    private void ProcessReposition()
+    {
+        Debug.Log("Start Reposition");
+        StartCoroutine(RepositionTiles(ProcessMatches));
+    }
+
+    private IEnumerator RepositionTiles(System.Action onCompleted)
+    {
+        List<bool> isCompleted = new List<bool>();
+
+        int i = 0;
+
+        for (int x = 0; x < size.x; x++)
+        {
+            for (int y = 0; y < size.y; y++)
+            {
+                Vector2 targetPosition = GetIndexPosition(new Vector2Int(x, y));
+                
+                if ((Vector2)_tiles[x,y].transform.position == targetPosition)
+                {
+                    continue;
+                }
+
+                isCompleted.Add(false);
+
+                int index = i;
+                StartCoroutine(_tiles[x, y].MoveTilePosition(targetPosition, () => { isCompleted[index] = true; }));
+
+                i++;
+            }
+        }
+        yield return new WaitUntil((() => IsAllTrue(isCompleted)));
+        
+        onCompleted?.Invoke();
+    }
+
+    #endregion
+
+    private bool IsAllTrue(List<bool> list)
+    {
+        foreach (var status in list)
+        {
+            if (!status) return false;
+        }
+
+        return true;
+    }
 }
