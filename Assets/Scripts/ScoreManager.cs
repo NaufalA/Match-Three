@@ -51,6 +51,7 @@ public class ScoreManager : MonoBehaviour
     public void IncrementCurentScore(int tileCount, int comboCount)
     {
         _currentScore += (tileCount * tileRatio) * (comboCount * comboRatio);
+        SoundManager.Instance.PlayScore(comboCount > 1);
     }
     
     public void SetHighScore()
