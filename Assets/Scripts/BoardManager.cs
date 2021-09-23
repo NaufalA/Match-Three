@@ -42,6 +42,7 @@ public class BoardManager : MonoBehaviour
     private Vector2 _startPosition;
     private Vector2 _endPosition;
     private TileController[,] _tiles;
+    private int _combo;
     
     public bool IsSwapping { get; set; }
     public bool IsProcessing { get; set; }
@@ -203,14 +204,13 @@ public class BoardManager : MonoBehaviour
 
     public void Process()
     {
-        Debug.Log("Start Process");
+        _combo = 0;
         IsProcessing = true;
         ProcessMatches();
     }
 
     public void ProcessMatches()
     {
-        Debug.Log("Start Process: Match");
         List<TileController> matchingTiles = GetAllMatches();
 
         if (matchingTiles == null || matchingTiles.Count == 0)
@@ -219,6 +219,9 @@ public class BoardManager : MonoBehaviour
             return;
         }
 
+        _combo++;
+        ScoreManager.Instance.IncrementCurentScore(matchingTiles.Count, _combo);
+        
         StartCoroutine(ClearMatches(matchingTiles, ProcessDrop));
     }
 
@@ -249,7 +252,6 @@ public class BoardManager : MonoBehaviour
 
     private void ProcessDrop()
     {
-        Debug.Log("Start Drop");
         Dictionary<TileController, int> droppingTiles = GetAllDrop();
 
         StartCoroutine(DropTiles(droppingTiles, ProcessDestroyAndFill));
@@ -257,7 +259,6 @@ public class BoardManager : MonoBehaviour
 
     private Dictionary<TileController, int> GetAllDrop()
     {
-        Debug.Log("Start Drop : Get All");
         Dictionary<TileController, int> droppingTiles = new Dictionary<TileController, int>();
 
         for (int x = 0; x < size.x; x++)
@@ -312,7 +313,6 @@ public class BoardManager : MonoBehaviour
 
     private void ProcessDestroyAndFill()
     {
-        Debug.Log("Start Destroy n Fill");
         List<TileController> destroyedTiles = GetAllDestroyed();
         StartCoroutine(DestroyAndFillTiles(destroyedTiles, ProcessReposition));
     }
@@ -369,7 +369,6 @@ public class BoardManager : MonoBehaviour
 
     private void ProcessReposition()
     {
-        Debug.Log("Start Reposition");
         StartCoroutine(RepositionTiles(ProcessMatches));
     }
 

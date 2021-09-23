@@ -30,11 +30,13 @@ public class TileController : MonoBehaviour
     public int id;
 
     private BoardManager _board;
+    private GameFlowManager _game;
     private SpriteRenderer _render;
 
     private void Awake()
     {
         _board = BoardManager.Instance;
+        _game = GameFlowManager.Instance;
         _render = GetComponent<SpriteRenderer>();
     }
 
@@ -47,7 +49,7 @@ public class TileController : MonoBehaviour
 
     private void OnMouseUp()
     {
-        if (_render.sprite == null || _board.IsAnimating)
+        if (_render.sprite == null || _board.IsAnimating || _game.IsGameOver)
         {
             return;
         }
@@ -67,13 +69,14 @@ public class TileController : MonoBehaviour
                 if (GetAllNeighborTiles().Contains(previousSelected))
                 {
                     TileController otherTile = previousSelected;
+                    previousSelected.Deselect();
+                    
                     SwapTile(otherTile, 
                         () =>
                         {
                             if (_board.GetAllMatches().Count > 0)
                             {
                                 _board.Process();
-                                previousSelected.Deselect();
                             }
                             else
                             {
